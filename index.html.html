@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Qamhawy AI — Mahaseel</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 100%; height: 100%;
+  overflow: hidden;
+  background: #06100a;
+  font-family: 'Jost', sans-serif;
+  cursor: none;
+}
+
+/* ── CUSTOM CURSOR ── */
+#cur-dot, #cur-ring {
+  position: fixed;
+  pointer-events: none;
+  z-index: 9999;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+#cur-dot {
+  width: 7px; height: 7px;
+  background: rgba(255,252,240,0.9);
+  mix-blend-mode: difference;
+  transition: width .15s, height .15s;
+}
+#cur-ring {
+  width: 34px; height: 34px;
+  border: 1px solid rgba(255,252,240,0.38);
+  transition: width .35s cubic-bezier(.16,1,.3,1),
+              height .35s cubic-bezier(.16,1,.3,1),
+              border-color .2s;
+}
+body.menu-open #cur-ring { width: 55px; height: 55px; border-color: rgba(255,252,240,.2); }
+
+/* ── CANVAS (water ripple layer) ── */
+#waterCanvas {
+  position: fixed; inset: 0;
+  width: 100%; height: 100%;
+  z-index: 1;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  opacity: 0.55;
+}
+
+/* ── BACKGROUND IMAGE ── */
+.bg {
+  position: fixed; inset: 0;
+  background: url('plants-sickness_1.png') center center / cover no-repeat;
+  z-index: 0;
+}
+/* dark overlay for readability */
+.bg::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(
+    to bottom,
+    rgba(4,10,6,.38) 0%,
+    rgba(3,8,5,.25) 40%,
+    rgba(4,10,6,.55) 100%
+  );
+}
+
+/* ── NAV ── */
+.nav {
+  position: fixed; top: 0; left: 0; right: 0;
+  z-index: 300;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 1.5rem 2rem;
+  pointer-events: none;
+}
+.nav > * { pointer-events: all; }
+
+.ham {
+  display: flex; flex-direction: column; gap: 6px;
+  width: 32px; background: none; border: none; cursor: none; padding: 3px;
+}
+.ham-line {
+  display: block; width: 100%; height: 1.2px;
+  background: rgba(255,252,240,.75); border-radius: 2px;
+  transition: transform .5s cubic-bezier(.16,1,.3,1), opacity .3s, width .3s;
+  transform-origin: center;
+}
+.ham.open .ham-line:nth-child(1) { transform: translateY(7.2px) rotate(45deg); }
+.ham.open .ham-line:nth-child(2) { opacity: 0; width: 0; }
+.ham.open .ham-line:nth-child(3) { transform: translateY(-7.2px) rotate(-45deg); }
+
+.logo {
+  font-size: .76rem; font-weight: 500; letter-spacing: .22em;
+  text-transform: uppercase; color: rgba(255,252,240,.8);
+  text-decoration: none; cursor: none;
+}
+
+/* ── HERO LAYOUT ── */
+.hero {
+  position: fixed; inset: 0; z-index: 10;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  pointer-events: none;
+  gap: 0;
+}
+
+/* ── TITLE ── */
+.headline-wrap {
+  pointer-events: all; cursor: none;
+  margin-bottom: 2rem;
+  text-align: center;
+}
+.headline {
+  font-family: 'Playfair Display', serif;
+  font-size: clamp(2.6rem, 6vw, 6rem);
+  font-weight: 400; letter-spacing: -.01em; line-height: 1.0;
+  color: rgba(255,252,240,.93);
+  user-select: none;
+}
+.headline .char {
+  display: inline-block;
+  transition: transform .5s cubic-bezier(.16,1,.3,1), color .3s, text-shadow .3s;
+  transform-origin: bottom center;
+}
+
+/* ── CHAT PANEL ── */
+.chat-panel {
+  pointer-events: all;
+  width: 100%; max-width: 440px;
+  background: rgba(10,18,12, 0.55);
+  border: 1px solid rgba(255,252,240,.14);
+  border-radius: 20px;
+  backdrop-filter: blur(22px) saturate(160%);
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,.04),
+    0 32px 80px rgba(0,0,0,.55),
+    inset 0 1px 0 rgba(255,255,255,.07);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  transition: box-shadow .4s;
+}
+.chat-panel.has-messages {
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,.06),
+    0 40px 100px rgba(0,0,0,.7),
+    inset 0 1px 0 rgba(255,255,255,.09);
+}
+
+/* ── MESSAGES AREA ── */
+.messages {
+  padding: 0 1.2rem;
+  display: flex; flex-direction: column; gap: .7rem;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,.1) transparent;
+  max-height: 360px;
+  /* start collapsed */
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height .45s cubic-bezier(.16,1,.3,1),
+              padding .45s cubic-bezier(.16,1,.3,1);
+}
+.chat-panel.has-messages .messages {
+  max-height: 360px;
+  padding: 1.2rem 1.2rem .8rem;
+  overflow-y: auto;
+}
+.messages::-webkit-scrollbar { width: 3px; }
+.messages::-webkit-scrollbar-thumb { background: rgba(255,255,255,.12); border-radius: 4px; }
+
+/* User bubble */
+.msg-user {
+  align-self: flex-end;
+  background: rgba(255,252,240,.12);
+  border: 1px solid rgba(255,252,240,.15);
+  color: rgba(255,252,240,.92);
+  font-size: .83rem; font-weight: 400; line-height: 1.4;
+  padding: .5rem .9rem;
+  border-radius: 14px 14px 4px 14px;
+  max-width: 78%;
+  animation: popIn .3s cubic-bezier(.16,1,.3,1);
+}
+
+/* AI bubble */
+.msg-ai {
+  align-self: flex-start;
+  color: rgba(255,252,240,.78);
+  font-size: .83rem; font-weight: 300; line-height: 1.65;
+  max-width: 95%;
+  padding: .15rem 0;
+  animation: fadeUp .4s cubic-bezier(.16,1,.3,1);
+}
+
+/* Typing indicator */
+.typing-dots {
+  display: flex; gap: 4px; align-items: center;
+  padding: .4rem 0;
+}
+.typing-dots span {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: rgba(255,252,240,.4);
+  animation: typingBounce 1.2s ease infinite;
+}
+.typing-dots span:nth-child(2) { animation-delay: .18s; }
+.typing-dots span:nth-child(3) { animation-delay: .36s; }
+
+@keyframes typingBounce {
+  0%,60%,100% { transform: translateY(0); opacity: .4; }
+  30% { transform: translateY(-5px); opacity: .9; }
+}
+@keyframes popIn {
+  from { opacity:0; transform: scale(.92) translateY(6px); }
+  to   { opacity:1; transform: scale(1)  translateY(0); }
+}
+@keyframes fadeUp {
+  from { opacity:0; transform: translateY(8px); }
+  to   { opacity:1; transform: translateY(0); }
+}
+
+/* ── DIVIDER ── */
+.panel-divider {
+  height: 0;
+  background: rgba(255,252,240,.08);
+  margin: 0 1.2rem;
+  flex-shrink: 0;
+  transition: height .35s cubic-bezier(.16,1,.3,1);
+}
+.chat-panel.has-messages .panel-divider {
+  height: 1px;
+}
+
+/* ── INPUT ROW ── */
+.input-row {
+  display: flex; align-items: center; gap: .4rem;
+  padding: .9rem 1rem .9rem 1.2rem;
+  flex-shrink: 0;
+  position: relative;
+}
+
+/* typewriter layer */
+.tw-layer {
+  position: absolute;
+  left: 1.2rem; right: 90px;
+  top: 0; bottom: 0;
+  display: flex; align-items: center;
+  pointer-events: none; overflow: hidden; white-space: nowrap;
+  transition: opacity .15s;
+}
+.tw-text { font-size: .84rem; color: rgba(255,252,240,.3); font-weight: 300; }
+.tw-cur {
+  display: inline-block; width: 1.5px; height: .95em;
+  background: rgba(255,252,240,.4); margin-left: 1px;
+  vertical-align: middle; border-radius: 1px;
+  animation: blink .85s step-end infinite;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+.chat-input {
+  flex: 1; background: none; border: none; outline: none;
+  color: rgba(255,252,240,.9); font-family: 'Jost',sans-serif;
+  font-size: .84rem; font-weight: 300; cursor: none;
+  position: relative; z-index: 2;
+}
+.chat-input::placeholder { color: transparent; }
+
+.input-actions { display: flex; align-items: center; gap: 2px; z-index: 2; flex-shrink: 0; }
+
+.icon-btn {
+  width: 34px; height: 34px; border: none; background: none;
+  border-radius: 50%; cursor: none; display: grid; place-items: center;
+  color: rgba(255,252,240,.3);
+  transition: background .2s, color .2s;
+}
+.icon-btn:hover { background: rgba(255,252,240,.08); color: rgba(255,252,240,.65); }
+
+.send-btn {
+  width: 36px; height: 36px; border: none; border-radius: 50%;
+  cursor: none; display: grid; place-items: center;
+  background: rgba(255,252,240,.14);
+  color: rgba(255,252,240,.8);
+  transition: background .2s, transform .15s;
+  flex-shrink: 0;
+}
+.send-btn:hover { background: rgba(255,252,240,.26); color: #fff; }
+.send-btn:active { transform: scale(.9); }
+.send-btn.loading {
+  animation: spin .7s linear infinite;
+  pointer-events: none;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+
+
+/* ── FULL-SCREEN MENU ── */
+.menu-screen {
+  position: fixed; inset: 0; z-index: 200;
+  pointer-events: none; opacity: 0;
+  transition: opacity .6s cubic-bezier(.16,1,.3,1);
+  background: rgba(4,9,5,.88);
+  backdrop-filter: blur(32px) saturate(140%);
+}
+.menu-screen.open { opacity: 1; pointer-events: all; }
+
+/* green organic glow canvas behind menu */
+#menuBg {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+}
+
+.menu-close-area { position: absolute; inset: 0; cursor: none; }
+
+.menu-inner {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  align-items: flex-start; justify-content: center;
+  padding: 0 8vw;
+}
+
+.menu-label {
+  font-size: .6rem; letter-spacing: .2em; text-transform: uppercase;
+  color: rgba(255,252,240,.22); margin-bottom: 2.8rem;
+  opacity: 0; transform: translateY(8px);
+  transition: opacity .5s .1s, transform .5s .1s;
+}
+.menu-screen.open .menu-label { opacity: 1; transform: none; }
+
+.menu-list { list-style: none; width: 100%; }
+
+.menu-link {
+  display: flex; align-items: baseline; gap: 1.2rem;
+  padding: .8rem 0;
+  border-bottom: 1px solid rgba(255,252,240,.06);
+  text-decoration: none; cursor: none;
+  opacity: 0; transform: translateY(20px);
+  transition: opacity .5s, transform .5s;
+  position: relative; overflow: hidden;
+}
+.menu-link:last-child { border-bottom: none; }
+.menu-screen.open .menu-link:nth-child(1) { opacity:1; transform:none; transition-delay:.10s; }
+.menu-screen.open .menu-link:nth-child(2) { opacity:1; transform:none; transition-delay:.16s; }
+.menu-screen.open .menu-link:nth-child(3) { opacity:1; transform:none; transition-delay:.22s; }
+.menu-screen.open .menu-link:nth-child(4) { opacity:1; transform:none; transition-delay:.28s; }
+.menu-screen.open .menu-link:nth-child(5) { opacity:1; transform:none; transition-delay:.34s; }
+
+.menu-num {
+  font-family: 'Jost', sans-serif; font-size: .65rem; font-weight: 300;
+  color: rgba(255,252,240,.2); letter-spacing: .08em;
+  transition: color .3s; flex-shrink: 0; width: 22px;
+}
+.menu-name {
+  font-family: 'Playfair Display', serif;
+  font-size: clamp(2rem, 5vw, 4.5rem);
+  font-weight: 400; letter-spacing: -.02em; line-height: 1.1;
+  color: rgba(255,252,240,.5);
+  transition: color .3s;
+}
+.menu-sub {
+  font-size: .7rem; font-weight: 300; color: rgba(255,252,240,.18);
+  margin-left: auto; text-align: right; max-width: 180px; line-height: 1.4;
+  transition: color .3s;
+  display: none;
+}
+
+.menu-link:hover .menu-num  { color: rgba(255,252,240,.45); }
+.menu-link:hover .menu-name { color: rgba(255,252,240,.92); }
+.menu-link:hover .menu-sub  { color: rgba(255,252,240,.35); }
+
+/* sweep underline */
+.menu-link::after {
+  content: ''; position: absolute; left: 0; bottom: 0;
+  height: 1px; width: 0;
+  background: linear-gradient(90deg, rgba(120,200,100,.5), transparent);
+  transition: width .5s cubic-bezier(.16,1,.3,1);
+}
+.menu-link:hover::after { width: 100%; }
+
+@media(min-width: 900px){ .menu-sub { display: block; } }
+@media(max-width: 600px){
+  .nav { padding: 1rem 1.2rem; }
+  .menu-name { font-size: clamp(1.8rem,8vw,3rem); }
+  .hero { padding: 0 1rem; }
+}
+</style>
+</head>
+<body>
+
+<!-- Custom cursor -->
+<div id="cur-ring"></div>
+<div id="cur-dot"></div>
+
+<!-- Background leaf image -->
+<div class="bg"></div>
+
+<!-- Water ripple canvas -->
+<canvas id="waterCanvas"></canvas>
+
+<!-- Menu -->
+<div class="menu-screen" id="menuScreen">
+  <canvas id="menuBg"></canvas>
+  <div class="menu-close-area" id="menuClose"></div>
+  <div class="menu-inner">
+    <p class="menu-label">Our Products</p>
+    <ul class="menu-list">
+      <li><a class="menu-link" href="#" onclick="return false">
+        <span class="menu-num">01</span>
+        <span class="menu-name">Qamhawy</span>
+        <span class="menu-sub">Smart wheat intelligence for farmers</span>
+      </a></li>
+      <li><a class="menu-link" href="#" onclick="return false">
+        <span class="menu-num">02</span>
+        <span class="menu-name">Mahaseel B2B</span>
+        <span class="menu-sub">Agricultural trade platform</span>
+      </a></li>
+      <li><a class="menu-link" href="#" onclick="return false">
+        <span class="menu-num">03</span>
+        <span class="menu-name">Mahaseel Shop</span>
+        <span class="menu-sub">Farm inputs & supplies marketplace</span>
+      </a></li>
+      <li><a class="menu-link" href="#" onclick="return false">
+        <span class="menu-num">04</span>
+        <span class="menu-name">Farm Analytics</span>
+        <span class="menu-sub">AI-driven crop & soil insights</span>
+      </a></li>
+      <li><a class="menu-link" href="#" onclick="return false">
+        <span class="menu-num">05</span>
+        <span class="menu-name">Market Intelligence</span>
+        <span class="menu-sub">Real-time commodity pricing</span>
+      </a></li>
+    </ul>
+  </div>
+</div>
+
+<!-- Nav -->
+<header class="nav">
+  <button class="ham" id="ham" aria-label="Menu">
+    <span class="ham-line"></span>
+    <span class="ham-line"></span>
+    <span class="ham-line"></span>
+  </button>
+  <a href="#" class="logo">Mahaseel.AI</a>
+</header>
+
+<!-- Hero -->
+<main class="hero">
+
+  <!-- Title -->
+  <div class="headline-wrap" id="headlineWrap">
+    <h1 class="headline" id="headline">Ask Qamhawy AI</h1>
+  </div>
+
+  <!-- Chat Panel -->
+  <div class="chat-panel" id="chatPanel">
+
+    <!-- Messages (hidden until user sends first message) -->
+    <div class="messages" id="messages"></div>
+
+    <div class="panel-divider"></div>
+
+    <!-- Input -->
+    <div class="input-row">
+      <div class="tw-layer" id="twLayer">
+        <span class="tw-text" id="twText"></span>
+        <span class="tw-cur"></span>
+      </div>
+      <input type="text" class="chat-input" id="chatInput" autocomplete="off" spellcheck="false"/>
+      <div class="input-actions">
+        <button class="icon-btn" id="attachBtn" title="Attach">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
+          </svg>
+        </button>
+        <button class="send-btn" id="sendBtn">
+          <svg id="sendIcon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="22" y1="2" x2="11" y2="13"/>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+/* ═══════════════════════════════════════
+   CURSOR
+═══════════════════════════════════════ */
+const dot  = document.getElementById('cur-dot');
+const ring = document.getElementById('cur-ring');
+let mx=window.innerWidth/2, my=window.innerHeight/2;
+let rx=mx, ry=my;
+document.addEventListener('mousemove', e => { mx=e.clientX; my=e.clientY; });
+(function cursorLoop(){
+  rx += (mx-rx)*.1; ry += (my-ry)*.1;
+  dot.style.cssText  = `left:${mx}px;top:${my}px`;
+  ring.style.cssText = `left:${rx}px;top:${ry}px`;
+  requestAnimationFrame(cursorLoop);
+})();
+
+/* ═══════════════════════════════════════
+   WATER RIPPLE CANVAS
+═══════════════════════════════════════ */
+const wc  = document.getElementById('waterCanvas');
+const wctx = wc.getContext('2d');
+let WW = wc.width  = window.innerWidth;
+let WH = wc.height = window.innerHeight;
+window.addEventListener('resize', () => {
+  WW = wc.width  = window.innerWidth;
+  WH = wc.height = window.innerHeight;
+});
+
+// ripple rings triggered by mouse clicks / moves
+const ripples = [];
+let lastRippleTime = 0;
+
+document.addEventListener('mousemove', e => {
+  const now = Date.now();
+  if (now - lastRippleTime > 80) {
+    lastRippleTime = now;
+    ripples.push({ x: e.clientX, y: e.clientY, r: 0, maxR: 80 + Math.random()*40, a: .22 });
+  }
+});
+document.addEventListener('click', e => {
+  ripples.push({ x: e.clientX, y: e.clientY, r: 0, maxR: 140, a: .38, big: true });
+});
+
+function drawWater() {
+  wc.width = WW; // clear
+  for (let i = ripples.length-1; i >= 0; i--) {
+    const rp = ripples[i];
+    rp.r  += rp.big ? 3.5 : 2;
+    rp.a  *= .94;
+    if (rp.r > rp.maxR || rp.a < .01) { ripples.splice(i,1); continue; }
+
+    wctx.beginPath();
+    wctx.arc(rp.x, rp.y, rp.r, 0, Math.PI*2);
+    wctx.strokeStyle = `rgba(180,230,160,${rp.a})`;
+    wctx.lineWidth = rp.big ? 1.5 : .8;
+    wctx.stroke();
+
+    // inner rings
+    if (rp.r > 20) {
+      wctx.beginPath();
+      wctx.arc(rp.x, rp.y, rp.r * .65, 0, Math.PI*2);
+      wctx.strokeStyle = `rgba(180,230,160,${rp.a*.5})`;
+      wctx.lineWidth = .5;
+      wctx.stroke();
+    }
+  }
+  requestAnimationFrame(drawWater);
+}
+drawWater();
+
+/* ═══════════════════════════════════════
+   LIQUID HEADLINE HOVER
+═══════════════════════════════════════ */
+function wrapChars() {
+  const h = document.getElementById('headline');
+  const txt = h.textContent;
+  h.innerHTML = txt.split('').map(c =>
+    c===' ' ? `<span class="char" style="display:inline">&nbsp;</span>`
+            : `<span class="char">${c}</span>`
+  ).join('');
+}
+wrapChars();
+
+const hw = document.getElementById('headlineWrap');
+hw.addEventListener('mousemove', e => {
+  const chars = document.querySelectorAll('.char');
+  const rect  = hw.getBoundingClientRect();
+  const lx = e.clientX - rect.left, ly = e.clientY - rect.top;
+  chars.forEach(c => {
+    const cr = c.getBoundingClientRect();
+    const cx = cr.left + cr.width/2  - rect.left;
+    const cy = cr.top  + cr.height/2 - rect.top;
+    const dx = lx-cx, dy = ly-cy;
+    const d  = Math.sqrt(dx*dx+dy*dy);
+    const z  = 90;
+    if (d < z) {
+      const f = 1 - d/z;
+      c.style.transform   = `translate(${-dx*f*.4}px,${-dy*f*.55}px) scale(${1+f*.2})`;
+      c.style.color       = `rgba(255,255,235,${.93+f*.07})`;
+      c.style.textShadow  = `0 0 ${f*28}px rgba(180,240,140,${f*.5})`;
+    } else {
+      c.style.transform = c.style.color = c.style.textShadow = '';
+    }
+  });
+});
+hw.addEventListener('mouseleave', () => {
+  document.querySelectorAll('.char').forEach(c => {
+    c.style.transform = c.style.color = c.style.textShadow = '';
+  });
+});
+
+/* ═══════════════════════════════════════
+   MENU
+═══════════════════════════════════════ */
+const ham        = document.getElementById('ham');
+const menuScreen = document.getElementById('menuScreen');
+const menuClose  = document.getElementById('menuClose');
+
+/* menu organic background */
+const menuBg  = document.getElementById('menuBg');
+const mbc     = menuBg.getContext('2d');
+let mW, mH, mOpen=false, mmx=.5, mmy=.5, msx=.5, msy=.5, mt0=null;
+
+function resizeMb(){ mW=menuBg.width=window.innerWidth; mH=menuBg.height=window.innerHeight; }
+resizeMb(); window.addEventListener('resize', resizeMb);
+
+document.addEventListener('mousemove', e => { mmx=e.clientX/window.innerWidth; mmy=e.clientY/window.innerHeight; });
+
+function drawMenuBg(ts) {
+  if(!mt0) mt0=ts;
+  const t=(ts-mt0)*.001;
+  msx+=(mmx-msx)*.05; msy+=(mmy-msy)*.05;
+  menuBg.width=mW;
+
+  mbc.fillStyle='rgba(4,9,5,0)'; mbc.fillRect(0,0,mW,mH);
+
+  // organic green blobs
+  [{bx:.3,by:.35,r:.7,c:'12,40,10'},{bx:.7,by:.6,r:.6,c:'8,30,8'},{bx:.5,by:.5,r:.9,c:'20,55,15'}].forEach((b,i)=>{
+    const ox=Math.sin(t*.2+i*2)*0.05, oy=Math.cos(t*.15+i*2)*0.04;
+    const px=(b.bx+ox+(msx-.5)*.1)*mW, py=(b.by+oy+(msy-.5)*.08)*mH;
+    const rad=b.r*Math.max(mW,mH)*.5;
+    const g=mbc.createRadialGradient(px,py,0,px,py,rad);
+    g.addColorStop(0,`rgba(${b.c},.45)`); g.addColorStop(1,`rgba(${b.c},0)`);
+    mbc.beginPath(); mbc.arc(px,py,rad,0,Math.PI*2); mbc.fillStyle=g; mbc.fill();
+  });
+
+  // cursor glow — subtle lime
+  const cpx=msx*mW, cpy=msy*mH;
+  const cg=mbc.createRadialGradient(cpx,cpy,0,cpx,cpy,200);
+  cg.addColorStop(0,'rgba(120,200,80,.08)'); cg.addColorStop(1,'rgba(0,0,0,0)');
+  mbc.beginPath(); mbc.arc(cpx,cpy,200,0,Math.PI*2); mbc.fillStyle=cg; mbc.fill();
+
+  // edge vignette
+  const vg=mbc.createRadialGradient(mW/2,mH/2,mH*.15,mW/2,mH/2,mW*.75);
+  vg.addColorStop(0,'rgba(4,9,5,0)'); vg.addColorStop(1,'rgba(2,5,2,.75)');
+  mbc.fillStyle=vg; mbc.fillRect(0,0,mW,mH);
+
+  if(mOpen) requestAnimationFrame(drawMenuBg);
+}
+
+function setMenu(open) {
+  mOpen=open;
+  ham.classList.toggle('open',open);
+  menuScreen.classList.toggle('open',open);
+  document.body.classList.toggle('menu-open',open);
+  if(open){ mt0=null; resizeMb(); requestAnimationFrame(drawMenuBg); }
+}
+ham.addEventListener('click',()=>setMenu(!ham.classList.contains('open')));
+menuClose.addEventListener('click',()=>setMenu(false));
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') setMenu(false); });
+document.querySelectorAll('.menu-link').forEach(l=>l.addEventListener('click',e=>{e.stopPropagation();setMenu(false);}));
+
+/* ═══════════════════════════════════════
+   TYPEWRITER
+═══════════════════════════════════════ */
+const prompts = [
+  "Ask any thing....",
+  "What's the best crop for my Delta soil?",
+  "Show today's wheat prices in Egypt...",
+  "When should I irrigate my tomatoes?",
+  "Connect me with Mahaseel B2B traders",
+  "Analyze my soil report...",
+];
+const twTxt = document.getElementById('twText');
+const twLay = document.getElementById('twLayer');
+const input = document.getElementById('chatInput');
+let ti=0,tc=0,td=false,tp=false;
+function tw(){
+  const c=prompts[ti];
+  if(tp){tp=false;td=true;setTimeout(tw,60);return;}
+  if(!td){twTxt.textContent=c.slice(0,++tc);if(tc===c.length){tp=true;setTimeout(tw,ti===0?1800:2200);}else setTimeout(tw,36+Math.random()*24);}
+  else{twTxt.textContent=c.slice(0,--tc);if(tc===0){td=false;ti=(ti+1)%prompts.length;setTimeout(tw,300);}else setTimeout(tw,15);}
+}
+input.addEventListener('input',()=>{ twLay.style.opacity=input.value?'0':'1'; });
+input.addEventListener('blur',()=>{ if(!input.value)twLay.style.opacity='1'; });
+setTimeout(tw, 600);
+
+/* ═══════════════════════════════════════
+   CHAT LOGIC
+═══════════════════════════════════════ */
+const messagesEl  = document.getElementById('messages');
+const chatPanel   = document.getElementById('chatPanel');
+const sendBtn     = document.getElementById('sendBtn');
+const sendIcon    = document.getElementById('sendIcon');
+let isLoading = false;
+let hasMessages = false;
+
+function activatePanel() {
+  if (!hasMessages) {
+    hasMessages = true;
+    chatPanel.classList.add('has-messages');
+  }
+}
+
+// Simulated AI responses per keyword
+const aiKnowledge = {
+  mango:   "🥭 Mango grows best in warm climates above 24°C. In Egypt, optimal planting is March–May. Use well-draining sandy loam soil, water deeply every 10–14 days, and apply potassium-rich fertilizer during fruiting season. Watch for anthracnose disease — treat with copper-based fungicide.",
+  wheat:   "🌾 Egyptian wheat (Triticum aestivum) peaks in winter. Plant November–December in the Nile Delta. Current recommended varieties include Misr-1 and Sakha-94. Apply 60–80 kg/feddan of nitrogen split across 3 doses. Harvest typically late April to May.",
+  tomato:  "🍅 Irrigate tomatoes every 3–5 days during vegetative stage, reducing to every 7 days as fruit ripens. In Delta regions, avoid overhead irrigation — use drip systems to prevent blight. Optimal soil EC: 2.5–3.5 dS/m.",
+  soil:    "🌱 Upload your soil report and I can analyze it in detail. Generally, Egyptian Delta soils are clay-heavy — add organic matter (compost 5–7 tons/feddan) to improve drainage. Test pH quarterly; optimal range for most crops is 6.5–7.2.",
+  price:   "📈 As of this season, soft wheat is trading at 4,200–4,600 EGP/ton in Egyptian markets. Corn is at 5,800–6,200 EGP/ton. For live B2B pricing, connect with Mahaseel B2B platform — updated daily.",
+  disease: "🔬 From your leaf image description, this appears to be fungal leaf spot (Cercospora). Recommended treatment: remove infected leaves, apply mancozeb 80% WP at 2.5g/L, repeat every 10 days for 3 cycles. Ensure proper spacing for airflow.",
+  default: "🤖 I'm Qamhawy AI — your agricultural intelligence assistant. I can help with crop selection, irrigation scheduling, disease diagnosis, market prices, and farm analytics across Egypt. What would you like to know?",
+};
+
+function getAIResponse(query) {
+  const q = query.toLowerCase();
+  if (q.includes('mango'))   return aiKnowledge.mango;
+  if (q.includes('wheat') || q.includes('قمح')) return aiKnowledge.wheat;
+  if (q.includes('tomato') || q.includes('irrigat')) return aiKnowledge.tomato;
+  if (q.includes('soil') || q.includes('report')) return aiKnowledge.soil;
+  if (q.includes('price') || q.includes('market')) return aiKnowledge.price;
+  if (q.includes('disease') || q.includes('leaf') || q.includes('sick')) return aiKnowledge.disease;
+  return aiKnowledge.default;
+}
+
+function scrollBottom() {
+  messagesEl.scrollTo({ top: messagesEl.scrollHeight, behavior: 'smooth' });
+}
+
+function addMessage(type, text) {
+  activatePanel();
+  const el = document.createElement('div');
+  el.className = type === 'user' ? 'msg-user' : 'msg-ai';
+  el.textContent = text;
+  messagesEl.appendChild(el);
+  scrollBottom();
+  return el;
+}
+
+function addTyping() {
+  activatePanel();
+  const el = document.createElement('div');
+  el.className = 'msg-ai';
+  el.innerHTML = `<div class="typing-dots"><span></span><span></span><span></span></div>`;
+  messagesEl.appendChild(el);
+  scrollBottom();
+  return el;
+}
+
+function typewriterResponse(el, text, cb) {
+  el.innerHTML = '';
+  let i = 0;
+  function step() {
+    if (i < text.length) {
+      el.textContent += text[i++];
+      scrollBottom();
+      setTimeout(step, 18 + Math.random()*12);
+    } else { if(cb) cb(); }
+  }
+  step();
+}
+
+function send() {
+  const val = input.value.trim();
+  if (!val || isLoading) return;
+
+  isLoading = true;
+  // send button spin
+  sendBtn.classList.add('loading');
+  sendIcon.innerHTML = `<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="28" stroke-dashoffset="10"/>`;
+
+  addMessage('user', val);
+  input.value = '';
+  twLay.style.opacity = '1';
+
+  const typingEl = addTyping();
+
+  setTimeout(() => {
+    const response = getAIResponse(val);
+    typingEl.innerHTML = '';
+    typewriterResponse(typingEl, response, () => {
+      isLoading = false;
+      sendBtn.classList.remove('loading');
+      sendIcon.innerHTML = `<line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>`;
+    });
+  }, 900 + Math.random()*500);
+}
+
+sendBtn.addEventListener('click', send);
+input.addEventListener('keydown', e => {
+  if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+});
+
+// attach button — triggers file picker, then shows image message
+document.getElementById('attachBtn').addEventListener('click', () => {
+  if (isLoading) return;
+  const picker = document.createElement('input');
+  picker.type = 'file'; picker.accept = 'image/*';
+  picker.onchange = () => {
+    if (!picker.files.length) return;
+    const name = picker.files[0].name;
+    addMessage('user', `📎 ${name}`);
+    const typing = addTyping();
+    setTimeout(() => {
+      typing.innerHTML = '';
+      typewriterResponse(typing, aiKnowledge.disease);
+    }, 1100);
+  };
+  picker.click();
+});
+</script>
+</body>
+</html>
